@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>코켓배송-곰발바닥 찾기 게임</title>
+  <style>
+    body, html { margin:0; padding:0; width:100%; height:100%; font-family:'Arial',sans-serif; background:url('1.jpg') no-repeat center/cover; overflow:hidden; }
+    /* 인트로 헤더만 불투명 검정 */
+    #intro, #gameOver {
+      position:absolute; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8);
+      display:flex; flex-direction:column; justify-content:center; align-items:center; padding:20px; box-sizing:border-box; color:#fff; z-index:10;
+    }
+    #intro h2, #gameOver h2 { font-size:1.8rem; margin-bottom:10px; }
+    #intro p, #gameOver p { margin:6px 0; color:#ccc; }
+    #intro button, #gameOver button {
+      margin-top:20px; padding:12px 24px; font-size:1.1rem; background:#ff9fcf; color:#fff; border:none; border-radius:8px;
+      cursor:pointer; box-shadow:0 2px 5px rgba(255,255,255,0.2); transition:background 0.2s;
+    }
+    #intro button:active, #gameOver button:active { background:#e55a5a; }
+    /* 게임 화면 */
+    #gameContainer { display:none; width:100%; height:100%; flex-direction:column; justify-content:flex-start; align-items:center; padding-top:20px; box-sizing:border-box; }
+    #status { width:90%; padding:10px 15px; background:rgba(0,0,0,0.8); color:#fff; font-size:1.2rem; text-align:center; border-radius:8px; margin-bottom:10px; }
+    #pads { display:grid; grid-template-columns:repeat(3,80px); grid-template-rows:repeat(2,80px); gap:15px; margin-bottom:20px; }
+    .pad { width:80px; height:80px; background:#fff; border-radius:50%; box-shadow:0 4px 8px rgba(0,0,0,0.5); display:flex; justify-content:center; align-items:center; font-size:2.5rem; cursor:pointer; transition:transform 0.1s ease, background 0.2s ease; }
+    .pad.active { background:#ffe4a2; transform:scale(1.1); box-shadow:0 6px 12px rgba(255,255,255,0.5); }
+    #instruction { font-size:1.2rem; color:#fff; text-shadow:1px 1px 2px #000; margin-bottom:20px; }
+    #footer { position:absolute; bottom:10px; width:100%; text-align:center; font-size:0.9rem; color:#ccc; }
+    #footer p, #footer a { margin:2px 0; color:#ccc; text-decoration:none; }
+  </style>
+</head>
+<body>
+  <!-- 인트로 -->
+  <div id="intro">
+    <h2>🐾코켓배송-곰발바닥 찾기 게임</h2>
+    <p>최초 3개의 목숨이며, 각 10라운드를 넘을 때마다 1개 목숨이 늘어납니다.</p>
+    <p>라운드별 60초 제한입니다.</p>
+    <p>목숨이 끝나면 게임은 종료됩니다.</p>
+    <p>10라운드 이상 달성 시 보너스 목숨 1개!</p>
+    <button id="introStart">게임 시작</button>
+  </div>
+
+  <!-- 게임 화면 -->
+  <div id="gameContainer">
+    <div id="status"></div>
+    <div id="pads">
+      <div class="pad" data-id="0">🐾</div>
+      <div class="pad" data-id="1">🐾</div>
+      <div class="pad" data-id="2">🐾</div>
+      <div class="pad" data-id="3">🐾</div>
+      <div class="pad" data-id="4">🐾</div>
+      <div class="pad" data-id="5">🐾</div>
+    </div>
+    <div id="instruction"></div>
+  </div>
+
+  <!-- 게임오버 화면 -->
+<div id="gameOver" style="display:none;">
+  <h2>게임 오버! 😢</h2>
+  <p id="overText">최종 결과 출력 영역</p> 
+  <p>코팟 구입은 걸코와 함께</p>
+  <p><a href="https://www.youtube.com/@Gulko" target="_blank">https://www.youtube.com/@Gulko</a></p>
+  <p>사랑합니다, 고객님</p>
+  <button id="restartBtn">다시 시작</button>
+</div>
+
+  <!-- 푸터 -->
+  <div id="footer">
+    <p>유튜브 '걸코_Gulko' 저작권 콘텐츠입니다.</p>
+    <p>© 2025 코켓게임즈. All rights reserved.</p>
+    <p><a href="https://www.youtube.com/@Gulko" target="_blank">https://www.youtube.com/@Gulko</a></p>
+  </div>
+
+  <script>
+    const intro = document.getElementById('intro');
+    const gameContainer = document.getElementById('gameContainer');
+    const gameOver = document.getElementById('gameOver');
+    const introStart = document.getElementById('introStart');
+    const restartBtn = document.getElementById('restartBtn');
+    const bgm = new Audio('1.mp3'); bgm.loop = true;
+
+    introStart.addEventListener('click', () => {
+      intro.style.display = 'none'; gameContainer.style.display = 'flex'; bgm.play(); startGame();
+    });
+    restartBtn.addEventListener('click', () => {
+      gameOver.style.display = 'none'; gameContainer.style.display = 'flex'; bgm.currentTime = 0; bgm.play(); startGame();
+    });
+
+    const audioFiles = ['2.mp3','3.mp3','4.mp3','5.mp3','6.mp3','7.mp3'];
+    const pads = Array.from(document.querySelectorAll('.pad'));
+    const status = document.getElementById('status');
+    const instruction = document.getElementById('instruction');
+
+    let sequence = [], playerInput = [], round = 0, lives = 3, timer = 60, accepting = false, timerId, bag = [];
+    function refill() { bag = [...Array(pads.length).keys()].sort(() => Math.random() - 0.5); }
+    function draw() { if (!bag.length) refill(); return bag.pop(); }
+    function playSound(i) { new Audio(audioFiles[i]).play(); }
+    function flash(i, d = 0) {
+      setTimeout(() => { pads[i].classList.add('active'); playSound(i); setTimeout(() => pads[i].classList.remove('active'), 400); }, d);
+    }
+    function updateStatus() {
+      status.innerHTML = `❤️ 목숨: ${lives} &nbsp;&nbsp; 🎯 레벨: ${round} &nbsp;&nbsp; ⏰ 시간: ${timer}`;
+    }
+
+    function startTimer() {
+      clearInterval(timerId); timer = 60; updateStatus();
+      timerId = setInterval(() => {
+        timer--; updateStatus();
+        if (timer <= 0) { clearInterval(timerId); lives--; if (lives <= 0) return triggerGameOver(); next(); }
+      }, 1000);
+    }
+    function playSeq() {
+      accepting = false; instruction.innerText = '';
+      sequence.forEach((i, idx) => flash(i, 600 * idx + 300));
+      setTimeout(() => { accepting = true; instruction.innerText = `라운드 ${round}: 곰발바닥을 따라해 보세요!`; }, 600 * sequence.length + 300);
+    }
+    function next() {
+      round++; if (round % 10 === 1 && round !== 1) lives++;
+      playerInput = [];
+      const id = draw(); sequence.push(id);
+      startTimer(); updateStatus(); playSeq();
+    }
+    function triggerGameOver() {
+      clearInterval(timerId); accepting = false; gameContainer.style.display = 'none';
+      document.getElementById('overText').innerText = ` 게임오버! 최종 레벨: ${round} 🐻💔`;
+      gameOver.style.display = 'flex';
+    }
+    function pick(i) {
+      if (!accepting) return;
+      flash(i);
+      playerInput.push(i);
+      for (let j = 0; j < playerInput.length; j++) {
+        if (playerInput[j] !== sequence[j]) { lives--; clearInterval(timerId); if (lives <= 0) return triggerGameOver(); return next(); }
+      }
+      if (playerInput.length === sequence.length) { clearInterval(timerId); setTimeout(next, 800); }
+    }
+    function startGame() {
+      sequence = []; playerInput = []; round = 0; lives = 3; refill(); next();
+    }
+    pads.forEach(p => { const i = +p.dataset.id; p.addEventListener('click', () => pick(i)); p.addEventListener('touchstart', e => { e.preventDefault(); pick(i); }); });
+  </script>
+</body>
+</html>
